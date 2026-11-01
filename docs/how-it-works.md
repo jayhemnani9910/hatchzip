@@ -59,7 +59,8 @@ From then on the archive is parsed through `storage::Reader`, which serves the l
 | `done` | Present and true once the final commit is journaled: every unit is extracted, and only the archive's removal and the links are left. A compressed stream's start may already be punched away by then, so a resume finishes without reading it. |
 | `keep` | Present and true when the extraction keeps the archive; see [Keeping the archive](#keeping-the-archive) |
 | `replace` | Present when the extraction replaces existing files, with `moved` once they are all moved aside; see [Replacing existing files](#replacing-existing-files) |
-| `folders` | Present when the archive has folder entries with permissions or a modified time: how many are saved in `<archive>.hatchzip-folders`, and its CRC-32 |
+| `folders` | Present when the archive has folder entries with permissions or a modified time: how many are saved in `<archive>.hatchzip-folders`, and its CRC-32. The file is checked when the journal loads |
+| `folders_left` | Present and true once the links are made and the replaced files settled: a resume only sets the folders and cleans up |
 
 The journal is at version 3 since `resume` was added. Version 2 journals load as they are; older builds refuse version 3, which matters, because they would delete the half-written file whose archive bytes are already gone. `resume.stream` came later without a new version: `tar.gz` and `tar.xz` journals have it, and builds that don't know those formats refuse the journal before reading it. `done` was added the same way; a build that ignores it truncates and reopens the archive as it always did. The gzip fields are written even at their defaults, because 0.1.8 reads this structure and has no defaults for them; only `kind` and `block` stay out at theirs. A journal with `keep` is version 4, and only such a journal is: builds from before `keep` refuse it, since they would resume it in place and truncate an archive the user asked to keep. Every other journal is still written as version 3, so an older build can finish it. A journal with `replace` is version 5, kept archive or not: older builds would delete the person's files at the paths of entries left to do, and a restore would not put the replaced files back. A journal with `folders` is version 7, whatever else it records: older builds would finish without setting the folders.
 
@@ -83,7 +84,9 @@ Units are processed in batches. Each batch goes through these steps, in this ord
 
 At the end, links are created, then folders get their permissions and modified times, then the remaining archive (at most a self-extractor stub or the 7z signature header) is deleted, then the side files.
 
-Every file and link made inside a folder changes its modified time, and a folder without write permission takes no new files, so folders are set last, deepest first, without following a link. A ZIP or 7z folder entry's header can be truncated long before the end, so before anything is extracted the folder entries are written to `<archive>.hatchzip-folders`, the same way as the saved tail.
+Every file and link made inside a folder changes its modified time, and a folder without write permission takes no new files, so folders are set last, deepest first, without following a link. A ZIP or 7z folder entry's header can be truncated long before the end, so before anything is extracted the folder entries are written to `<archive>.hatchzip-folders`, the same way as the saved tail. Only folders the extraction creates are listed: one already in the output is left as it was, like an existing file.
+
+Once the links are made, the journal records `folders_left`, so a resume never makes a link again inside a folder that may no longer take new entries. A resume can also find folders already set without read or search permission, so it first gives the owner full access back, shallowest first, then sets them all again, deepest first.
 
 ## Freeing space inside a large file
 

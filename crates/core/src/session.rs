@@ -623,6 +623,7 @@ pub fn begin(
             keep: only_found(&c.keep),
             both: only_found(&c.both),
         });
+    let folders = crate::folders::of(&job.units, &output);
     let plan = Plan {
         format: job.format_name,
         tail_start: job.tail_start,
@@ -630,7 +631,7 @@ pub fn begin(
         total_size: job.remaining_size(),
         keep: keep_archive,
         replace,
-        folders: crate::folders::of(&job.units),
+        folders,
     };
     Journal::create(paths, &job.storage, plan)
 }
